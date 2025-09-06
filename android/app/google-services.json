@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "229193528240",
+    "project_id": "lagbe-lagbe",
+    "storage_bucket": "lagbe-lagbe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:229193528240:android:9fce8687db36c7c9931c75",
+        "android_client_info": {
+          "package_name": "com.company.lagbe_lagbe"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrVRwd8MlxJ92y-0vjLLwILUwNKydXLX0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:229193528240:android:361e94a417c6b89a931c75",
+        "android_client_info": {
+          "package_name": "com.example.lagbe_lagbe"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrVRwd8MlxJ92y-0vjLLwILUwNKydXLX0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
