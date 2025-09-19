@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:lagbe_lagbe/activity.dart';
 import 'package:lagbe_lagbe/navHome.dart';
 import 'package:lagbe_lagbe/profile.dart';
+import 'navHomeVar.dart';
 
 const Color inActiveIconColor = Color(0xFFB6B6B6);
 
@@ -24,7 +26,7 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
   final pages = [
     const Center(child: HomeS()),
     const Center(child: Text("Fav")),
-    const Center(child: Text("Cart")),
+    const ActivityScreen(),
     const Center(child: ProfileScreen()),
   ];
 
@@ -75,14 +77,14 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
           ),
           BottomNavigationBarItem(
             icon: SvgPicture.string(
-              chatIcon,
+              rentalIcon,
               colorFilter: const ColorFilter.mode(
                 inActiveIconColor,
                 BlendMode.srcIn,
               ),
             ),
             activeIcon: SvgPicture.string(
-              chatIcon,
+              rentalIcon,
               colorFilter: const ColorFilter.mode(
                 Color(0xFF7A8BEC),
                 BlendMode.srcIn,

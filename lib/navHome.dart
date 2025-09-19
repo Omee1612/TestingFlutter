@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 // TODO: add flutter_svg to pubspec.yaml
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:lagbe_lagbe/donations.dart';
+import 'package:lagbe_lagbe/finder.dart';
+import 'package:lagbe_lagbe/oddjobs.dart';
+import 'package:lagbe_lagbe/vintageMarket.dart';
 import 'navHomeVar.dart';
+import 'quickborrow.dart';
+import 'posts.dart';
 
 class HomeS extends StatelessWidget {
   const HomeS({super.key});
@@ -187,23 +193,93 @@ class Categories extends StatelessWidget {
     List<Map<String, dynamic>> categories = [
       {"icon": flashIcon, "text": "Quick Borrow"},
       {"icon": billIcon, "text": "Odd Job"},
-      {"icon": gameIcon, "text": "Donation"},
+      {"icon": bloodIcon, "text": "Donation"},
       {"icon": giftIcon, "text": "Finder"},
-      {"icon": discoverIcon, "text": "More"},
+      {"icon": camIcon, "text": "Vintage Market"},
+      {"icon": discoverIcon, "text": "Posts"},
     ];
+
     return Padding(
       padding: const EdgeInsets.all(20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: List.generate(
-          categories.length,
-          (index) => CategoryCard(
-            icon: categories[index]["icon"],
-            text: categories[index]["text"],
-            press: () {},
+      child: Column(
+        children: [
+          // First row -> Quick Borrow + Odd Job
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              CategoryCard(
+                icon: flashIcon,
+                text: "Quick Borrow",
+                press: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const QuickBorrowScreen(),
+                    ),
+                  );
+                },
+              ),
+              CategoryCard(
+                icon: billIcon,
+                text: "Odd Job",
+                press: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OddJobScreen()),
+                  );
+                },
+              ),
+              CategoryCard(
+                icon: bloodIcon,
+                text: "Donation",
+                press: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const DonationsScreen()),
+                  );
+                },
+              ),
+              CategoryCard(
+                icon: giftIcon,
+                text: "Finder",
+                press: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FinderScreen()),
+                  );
+                },
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CategoryCard(
+                icon: camIcon,
+                text: "Vintage Market",
+                press: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const VintageMarketScreen(),
+                    ),
+                  );
+                },
+              ),
+              CategoryCard(
+                icon: discoverIcon,
+                text: "Posts",
+                press: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PostsScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
