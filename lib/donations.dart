@@ -112,6 +112,7 @@ class _DonationsScreenState extends State<DonationsScreen> {
                             "notes": notesController.text,
                             "timestamp": FieldValue.serverTimestamp(),
                             "createdBy": user.uid,
+                            "confirmedVolunteers": [],
                           });
                       Navigator.pop(context);
                     }
@@ -149,11 +150,56 @@ class _DonationsScreenState extends State<DonationsScreen> {
     );
   }
 
+  Future<void> _volunteerForDonation(
+    DocumentSnapshot doc,
+    Map<String, dynamic> req,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1️⃣ Record volunteer
+    await FirebaseFirestore.instance.collection("volunteers").add({
+      "donationId": doc.id,
+      "userId": user.uid,
+      "username": user.displayName ?? "Anonymous",
+      "timestamp": FieldValue.serverTimestamp(),
+      "status": "PENDING",
+    });
+
+    // 2️⃣ Notify volunteer themselves
+    await FirebaseFirestore.instance.collection("donationNotifications").add({
+      "userId": user.uid,
+      "message": "You volunteered for ${req['patientName']}!",
+      "timestamp": FieldValue.serverTimestamp(),
+    });
+
+    // 3️⃣ Notify the poster
+    await FirebaseFirestore.instance
+        .collection('userNotifications')
+        .doc(req['createdBy'])
+        .collection('notifications')
+        .add({
+          "message":
+              "${user.displayName ?? "Someone"} volunteered for your blood donation request: ${req['patientName']}",
+          "timestamp": FieldValue.serverTimestamp(),
+          "seen": false,
+        });
+
+    // 4️⃣ Show confirmation
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("You volunteered for ${req['patientName']}!"),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null)
+    if (user == null) {
       return const Center(child: Text("Please log in to see donations."));
+    }
 
     return Scaffold(
       body: Container(
@@ -222,8 +268,10 @@ class _DonationsScreenState extends State<DonationsScreen> {
                       .orderBy("timestamp", descending: true)
                       .snapshots(),
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData)
+                    if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
+                    }
+
                     var donations = snapshot.data!.docs;
                     if (selectedBloodGroup != "All") {
                       donations = donations.where((d) {
@@ -231,10 +279,12 @@ class _DonationsScreenState extends State<DonationsScreen> {
                         return data['bloodGroup'] == selectedBloodGroup;
                       }).toList();
                     }
-                    if (donations.isEmpty)
+
+                    if (donations.isEmpty) {
                       return const Center(
                         child: Text("No donation requests found"),
                       );
+                    }
 
                     donations.sort((a, b) {
                       const urgencyOrder = {"High": 0, "Medium": 1, "Low": 2};
@@ -251,6 +301,7 @@ class _DonationsScreenState extends State<DonationsScreen> {
                       itemBuilder: (context, index) {
                         final doc = donations[index];
                         final req = doc.data() as Map<String, dynamic>;
+
                         return Container(
                           margin: const EdgeInsets.symmetric(vertical: 10),
                           padding: const EdgeInsets.all(14),
@@ -335,53 +386,8 @@ class _DonationsScreenState extends State<DonationsScreen> {
                                         vertical: 10,
                                       ),
                                     ),
-                                    onPressed: () async {
-                                      // 1️⃣ Record volunteer
-                                      await FirebaseFirestore.instance
-                                          .collection("volunteers")
-                                          .add({
-                                            "donationId": doc.id,
-                                            "userId": user.uid,
-                                            "timestamp":
-                                                FieldValue.serverTimestamp(),
-                                          });
-
-                                      // 2️⃣ Notify the volunteer themselves (optional)
-                                      await FirebaseFirestore.instance
-                                          .collection("donationNotifications")
-                                          .add({
-                                            "userId": user.uid,
-                                            "message":
-                                                "You volunteered for ${req['patientName']}!",
-                                            "timestamp":
-                                                FieldValue.serverTimestamp(),
-                                          });
-
-                                      // 3️⃣ Notify the poster
-                                      await FirebaseFirestore.instance
-                                          .collection('userNotifications')
-                                          .doc(req['createdBy']) // poster's UID
-                                          .collection('notifications')
-                                          .add({
-                                            "message":
-                                                "${user.displayName ?? "Someone"} volunteered for your blood donation request: ${req['patientName']}",
-                                            "timestamp":
-                                                FieldValue.serverTimestamp(),
-                                            "seen": false,
-                                          });
-
-                                      // 4️⃣ Show confirmation
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            "You volunteered for ${req['patientName']}!",
-                                          ),
-                                          backgroundColor: Colors.green,
-                                        ),
-                                      );
-                                    },
+                                    onPressed: () =>
+                                        _volunteerForDonation(doc, req),
                                     child: const Text(
                                       "Donate",
                                       style: TextStyle(

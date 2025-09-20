@@ -16,7 +16,6 @@ class NotificationsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ---------------- Borrow Requests ----------------
           const SectionTitle(
             title: "Borrow Requests",
             icon: Icons.shopping_bag,
@@ -25,8 +24,7 @@ class NotificationsScreen extends StatelessWidget {
           StreamSection(
             query: FirebaseFirestore.instance
                 .collection("quickBorrowRequests")
-                .where("itemOwnerId", isEqualTo: user.uid)
-                .orderBy('timestamp', descending: true),
+                .where("itemOwnerId", isEqualTo: user.uid),
             emptyText: "No incoming requests.",
             itemBuilder: (doc) {
               final data = doc.data();
@@ -43,14 +41,12 @@ class NotificationsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
-          // ---------------- Job Requests ----------------
           const SectionTitle(title: "Job Requests", icon: Icons.work),
           const SizedBox(height: 8),
           StreamSection(
             query: FirebaseFirestore.instance
                 .collection("oddJobRequests")
-                .where("ownerId", isEqualTo: user.uid)
-                .orderBy('timestamp', descending: true),
+                .where("ownerId", isEqualTo: user.uid),
             emptyText: "No job requests.",
             itemBuilder: (doc) {
               final data = doc.data();
@@ -67,7 +63,6 @@ class NotificationsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
-          // ---------------- Blood Donation Requests ----------------
           const SectionTitle(
             title: "Blood Donation Requests",
             icon: Icons.bloodtype,
@@ -76,8 +71,7 @@ class NotificationsScreen extends StatelessWidget {
           StreamSection(
             query: FirebaseFirestore.instance
                 .collection("bloodDonationRequests")
-                .where("ownerId", isEqualTo: user.uid)
-                .orderBy('timestamp', descending: true),
+                .where("ownerId", isEqualTo: user.uid),
             emptyText: "No blood donation requests.",
             itemBuilder: (doc) {
               final data = doc.data();
@@ -94,7 +88,6 @@ class NotificationsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
-          // ---------------- Poster Notifications ----------------
           const SectionTitle(
             title: "My Notifications",
             icon: Icons.notifications,
@@ -104,8 +97,7 @@ class NotificationsScreen extends StatelessWidget {
             query: FirebaseFirestore.instance
                 .collection('userNotifications')
                 .doc(user.uid)
-                .collection('notifications')
-                .orderBy('timestamp', descending: true),
+                .collection('notifications'),
             emptyText: "No notifications yet.",
             itemBuilder: (doc) {
               final data = doc.data();
@@ -154,10 +146,24 @@ class StreamSection extends StatelessWidget {
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
           return Text(emptyText);
+
+        // ✅ Filter empty docs
         final validDocs = snapshot.data!.docs
             .where((d) => d.data().isNotEmpty)
             .toList();
+
         if (validDocs.isEmpty) return Text(emptyText);
+
+        // ✅ Sort locally by timestamp (null-safe)
+        validDocs.sort((a, b) {
+          final at = (a.data()['timestamp'] as Timestamp?);
+          final bt = (b.data()['timestamp'] as Timestamp?);
+          if (at == null && bt == null) return 0;
+          if (at == null) return 1; // put nulls last
+          if (bt == null) return -1;
+          return bt.compareTo(at); // newest first
+        });
+
         return Column(children: validDocs.map(itemBuilder).toList());
       },
     );

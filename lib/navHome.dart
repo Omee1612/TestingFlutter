@@ -9,6 +9,7 @@ import 'package:lagbe_lagbe/vintageMarket.dart';
 import 'navHomeVar.dart';
 import 'quickborrow.dart';
 import 'posts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HomeS extends StatelessWidget {
   const HomeS({super.key});
@@ -55,7 +56,7 @@ class HomeHeader extends StatelessWidget {
           const SizedBox(width: 8),
           IconBtnWithCounter(
             svgSrc: bellIcon,
-            numOfitem: 3, // total pending notifications
+            showExclamation: true, // <- now it shows '!' instead of number
             press: () {
               Navigator.push(
                 context,
@@ -69,38 +70,83 @@ class HomeHeader extends StatelessWidget {
   }
 }
 
-class SearchField extends StatelessWidget {
+class SearchField extends StatefulWidget {
   const SearchField({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return Form(
-      child: TextFormField(
-        onChanged: (value) {},
-        decoration: InputDecoration(
-          filled: true,
-          hintStyle: const TextStyle(color: Color(0xFF757575)),
-          fillColor: const Color(0xFF979797).withOpacity(0.1),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 8,
-          ),
-          border: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide.none,
-          ),
-          hintText: "Search product",
-          prefixIcon: const Icon(Icons.search),
-        ),
+  State<SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<SearchField> {
+  final TextEditingController _controller = TextEditingController();
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _results = [];
+
+  void _search(String query) async {
+    if (query.isEmpty) {
+      setState(() => _results = []);
+      return;
+    }
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('quick_borrow_items')
+        .where('title', isGreaterThanOrEqualTo: query)
+        .where('title', isLessThanOrEqualTo: query + '\uf8ff')
+        .get();
+
+    setState(() => _results = snapshot.docs);
+  }
+
+  void _openDetail(Map<String, dynamic> item, String docId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QuickBorrowDetailScreen(item: item, docId: docId),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextFormField(
+          controller: _controller,
+          onChanged: _search,
+          decoration: InputDecoration(
+            filled: true,
+            hintText: "Search borrow items",
+            hintStyle: const TextStyle(color: Color(0xFF757575)),
+            fillColor: const Color(0xFF979797).withOpacity(0.1),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
+            border: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+              borderSide: BorderSide.none,
+            ),
+            prefixIcon: const Icon(Icons.search),
+          ),
+        ),
+        if (_results.isNotEmpty)
+          Container(
+            color: Colors.white,
+            constraints: const BoxConstraints(maxHeight: 200),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _results.length,
+              itemBuilder: (context, index) {
+                final doc = _results[index];
+                final item = doc.data();
+                return ListTile(
+                  title: Text(item['title']),
+                  subtitle: Text("Available for: ${item['duration']}"),
+                  onTap: () => _openDetail(item, doc.id),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 }
@@ -110,11 +156,13 @@ class IconBtnWithCounter extends StatelessWidget {
     Key? key,
     required this.svgSrc,
     this.numOfitem = 0,
+    this.showExclamation = false, // new flag
     required this.press,
   }) : super(key: key);
 
   final String svgSrc;
   final int numOfitem;
+  final bool showExclamation; // new
   final GestureTapCallback press;
 
   @override
@@ -135,7 +183,7 @@ class IconBtnWithCounter extends StatelessWidget {
             ),
             child: SvgPicture.string(svgSrc),
           ),
-          if (numOfitem != 0)
+          if (numOfitem != 0 || showExclamation)
             Positioned(
               top: -3,
               right: 0,
@@ -149,7 +197,7 @@ class IconBtnWithCounter extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    "$numOfitem",
+                    showExclamation ? "!" : "$numOfitem",
                     style: const TextStyle(
                       fontSize: 12,
                       height: 1,

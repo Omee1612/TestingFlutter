@@ -13,6 +13,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String username = "Not set";
   String phone = "Not provided";
   String institute = "Not set";
+  int points = 0;
 
   @override
   void initState() {
@@ -34,6 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         username = doc.data()?['username'] ?? "Not set";
         phone = doc.data()?['phone'] ?? "Not provided";
         institute = doc.data()?['institute'] ?? "Not set";
+        points = doc.data()?['points'] ?? 0; // <-- Load points
       });
     }
   }
@@ -194,6 +196,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       "Institute: $institute",
                       style: TextStyle(color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Points: $points", // <-- Show points
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple,
+                      ),
                     ),
                   ],
                 ),

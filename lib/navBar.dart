@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lagbe_lagbe/activity.dart';
+import 'package:lagbe_lagbe/fav.dart';
 import 'package:lagbe_lagbe/navHome.dart';
 import 'package:lagbe_lagbe/profile.dart';
 import 'navHomeVar.dart';
@@ -25,7 +26,7 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
 
   final pages = [
     const Center(child: HomeS()),
-    const Center(child: Text("Fav")),
+    const FavScreen(),
     const ActivityScreen(),
     const Center(child: ProfileScreen()),
   ];

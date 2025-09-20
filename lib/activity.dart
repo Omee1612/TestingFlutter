@@ -6,6 +6,22 @@ import 'package:intl/intl.dart';
 class ActivityScreen extends StatelessWidget {
   const ActivityScreen({super.key});
 
+  // ---------------- Universal Points Helper ----------------
+  Future<void> _addPointsToUser(String userId, int points) async {
+    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(userRef);
+
+      if (!snapshot.exists) {
+        transaction.set(userRef, {'points': points});
+      } else {
+        final currentPoints = snapshot.data()?['points'] ?? 0;
+        transaction.update(userRef, {'points': currentPoints + points});
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -30,43 +46,80 @@ class ActivityScreen extends StatelessWidget {
           // ---------------- Borrow Requests ----------------
           const SectionTitle(
             title: "Borrow Requests",
-            icon: Icons.notifications,
+            icon: Icons.shopping_cart,
           ),
           const SizedBox(height: 8),
           StreamSection(
             query: FirebaseFirestore.instance
                 .collection("quickBorrowRequests")
                 .where("itemOwnerId", isEqualTo: user.uid),
-            emptyText: "No incoming requests.",
+            emptyText: "No incoming borrow requests.",
             itemBuilder: (doc) {
               final data = doc.data();
+              final status = data?['status'] ?? 'PENDING';
+              final isHandled = status == 'ACCEPTED' || status == 'DENIED';
+
               return ActivityCard(
                 title: data?['itemName'] ?? "Unnamed item",
                 subtitle:
-                    "Requested by: ${data?['requesterName'] ?? 'Unknown'}\nStatus: ${data?['status'] ?? 'PENDING'}",
+                    "Requested by: ${data?['requesterName'] ?? 'Unknown'}\nStatus: $status",
                 icon: Icons.shopping_cart,
                 color: Colors.orangeAccent,
-                onDualAction: (accepted) async {
-                  if (accepted) {
-                    await FirebaseFirestore.instance
-                        .collection("borrowedItems")
-                        .add({
-                          "itemName": data?['itemName'] ?? '',
-                          "userId": data?['requesterId'] ?? '',
-                          "ownerId": user.uid,
-                          "timestamp": FieldValue.serverTimestamp(),
-                        });
-                  }
-                  await FirebaseFirestore.instance
-                      .collection("quickBorrowRequests")
-                      .doc(doc.id)
-                      .delete();
-                },
+                onDualAction: isHandled
+                    ? null
+                    : (accepted) async {
+                        final requesterId = data?['requesterId'];
+                        if (accepted) {
+                          // Add borrowed item
+                          await FirebaseFirestore.instance
+                              .collection("borrowedItems")
+                              .add({
+                                "itemName": data?['itemName'] ?? '',
+                                "userId": requesterId ?? '',
+                                "ownerId": user.uid,
+                                "timestamp": FieldValue.serverTimestamp(),
+                              });
+
+                          // Points
+                          await _addPointsToUser(user.uid, 5); // Poster
+                          if (requesterId != null) {
+                            await _addPointsToUser(
+                              requesterId,
+                              15,
+                            ); // Requester
+                          }
+                        }
+
+                        // Update request status
+                        await FirebaseFirestore.instance
+                            .collection("quickBorrowRequests")
+                            .doc(doc.id)
+                            .update({
+                              "status": accepted ? "ACCEPTED" : "DENIED",
+                            });
+
+                        // Notify requester
+                        if (requesterId != null) {
+                          await FirebaseFirestore.instance
+                              .collection('userNotifications')
+                              .doc(requesterId)
+                              .collection('notifications')
+                              .add({
+                                "message": accepted
+                                    ? "Your borrow request for ${data?['itemName'] ?? 'an item'} was ACCEPTED"
+                                    : "Your borrow request was DENIED",
+                                "timestamp": FieldValue.serverTimestamp(),
+                                "seen": false,
+                              });
+                        }
+                      },
               );
             },
           ),
 
           const SizedBox(height: 20),
+
+          // ---------------- Borrowed Items ----------------
           const SectionTitle(title: "Borrowed Items", icon: Icons.shopping_bag),
           const SizedBox(height: 8),
           StreamSection(
@@ -94,6 +147,70 @@ class ActivityScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
+
+          // ---------------- Jobs Posted ----------------
+          const SectionTitle(title: "Jobs Posted", icon: Icons.post_add),
+          const SizedBox(height: 8),
+          StreamSection(
+            query: FirebaseFirestore.instance
+                .collection("oddjobs")
+                .where("userId", isEqualTo: user.uid),
+            emptyText: "No jobs posted.",
+            itemBuilder: (doc) {
+              final data = doc.data();
+              final timestamp = data?['createdAt'] as Timestamp?;
+              final status = data?['status'] ?? 'PENDING';
+              final isHandled = status == 'ACCEPTED' || status == 'DENIED';
+              final takerId = data?['takerId'];
+
+              return ActivityCard(
+                title: data?['title'] ?? "Unnamed job",
+                subtitle: timestamp != null
+                    ? "Posted on: ${formatter.format(timestamp.toDate())}\nStatus: $status"
+                    : "Posted on: N/A\nStatus: $status",
+                icon: Icons.work,
+                color: Colors.purpleAccent,
+                onDualAction: isHandled || takerId == null
+                    ? null
+                    : (accepted) async {
+                        // Update status
+                        await FirebaseFirestore.instance
+                            .collection("oddjobs")
+                            .doc(doc.id)
+                            .update({
+                              "status": accepted ? "ACCEPTED" : "DENIED",
+                            });
+
+                        // Points
+                        if (accepted) {
+                          await _addPointsToUser(user.uid, 5); // Poster
+                          if (takerId != null)
+                            await _addPointsToUser(takerId, 15);
+                        }
+
+                        // Notify taker
+                        if (takerId != null) {
+                          final posterName = user.displayName ?? "Poster";
+                          await FirebaseFirestore.instance
+                              .collection("userNotifications")
+                              .doc(takerId)
+                              .collection("notifications")
+                              .add({
+                                "message": accepted
+                                    ? "$posterName accepted your job application"
+                                    : "$posterName denied your job application",
+                                "timestamp": FieldValue.serverTimestamp(),
+                                "seen": false,
+                              });
+                        }
+                      },
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+
+          // ---------------- Jobs Taken ----------------
           const SectionTitle(title: "Jobs Taken", icon: Icons.work),
           const SizedBox(height: 8),
           StreamSection(
@@ -121,44 +238,95 @@ class ActivityScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
-          const SectionTitle(title: "Jobs Posted", icon: Icons.post_add),
-          const SizedBox(height: 8),
-          StreamSection(
-            query: FirebaseFirestore.instance
-                .collection("oddjobs")
-                .where("userId", isEqualTo: user.uid),
-            emptyText: "No jobs posted.",
-            itemBuilder: (doc) {
-              final data = doc.data();
-              final timestamp = data?['createdAt'] as Timestamp?;
-              return ActivityCard(
-                title: data?['title'] ?? "Unnamed job",
-                subtitle: timestamp != null
-                    ? "Posted on: ${formatter.format(timestamp.toDate())}"
-                    : "Posted on: N/A",
-                icon: Icons.work,
-                color: Colors.purpleAccent,
-              );
-            },
-          ),
 
-          const SizedBox(height: 20),
-          const SectionTitle(title: "Notifications", icon: Icons.notifications),
+          // ---------------- Blood Donations ----------------
+          const SectionTitle(title: "Blood Donations", icon: Icons.bloodtype),
           const SizedBox(height: 8),
           StreamSection(
             query: FirebaseFirestore.instance
-                .collection("donationNotifications")
-                .where("userId", isEqualTo: user.uid),
-            emptyText: "No notifications.",
-            itemBuilder: (doc) {
-              final data = doc.data();
-              final timestamp = data?['timestamp'] as Timestamp?;
-              return ActivityCard(
-                title: "Notification",
-                subtitle:
-                    "${data?['message'] ?? ''}\n${timestamp != null ? formatter.format(timestamp.toDate()) : 'N/A'}",
-                icon: Icons.notifications,
-                color: Colors.teal,
+                .collection("bloodDonations")
+                .where("createdBy", isEqualTo: user.uid),
+            emptyText: "No blood donations.",
+            itemBuilder: (donDoc) {
+              final donation = donDoc.data();
+
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection("volunteers")
+                    .where("donationId", isEqualTo: donDoc.id)
+                    .snapshots(),
+                builder: (context, volSnapshot) {
+                  if (!volSnapshot.hasData || volSnapshot.data!.docs.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final volunteers = volSnapshot.data!.docs;
+                  return Column(
+                    children: volunteers.map((volDoc) {
+                      final vol = volDoc.data();
+                      final volUserId = vol['userId'] as String?;
+                      final volTimestamp = vol['timestamp'] as Timestamp?;
+                      final status = vol['status'] ?? 'PENDING';
+                      final isHandled =
+                          status == 'ACCEPTED' || status == 'DENIED';
+                      final volName =
+                          vol['username'] ?? vol['displayName'] ?? "Volunteer";
+
+                      return ActivityCard(
+                        title: "Volunteer",
+                        subtitle:
+                            "Volunteer: $volName\nStatus: $status\nVolunteered on: ${volTimestamp != null ? formatter.format(volTimestamp.toDate()) : 'N/A'}",
+                        icon: Icons.bloodtype,
+                        color: Colors.redAccent,
+                        onDualAction: isHandled
+                            ? null
+                            : (accepted) async {
+                                await FirebaseFirestore.instance
+                                    .collection("volunteers")
+                                    .doc(volDoc.id)
+                                    .update({
+                                      "status": accepted
+                                          ? "ACCEPTED"
+                                          : "DENIED",
+                                    });
+
+                                if (accepted) {
+                                  await _addPointsToUser(user.uid, 5);
+                                  if (volUserId != null)
+                                    await _addPointsToUser(volUserId, 15);
+                                }
+
+                                if (volUserId != null) {
+                                  final posterName =
+                                      user.displayName ?? "Poster";
+                                  await FirebaseFirestore.instance
+                                      .collection("userNotifications")
+                                      .doc(volUserId)
+                                      .collection("notifications")
+                                      .add({
+                                        "message": accepted
+                                            ? "$posterName accepted your volunteer offer"
+                                            : "$posterName denied your volunteer offer",
+                                        "timestamp":
+                                            FieldValue.serverTimestamp(),
+                                        "seen": false,
+                                      });
+                                }
+
+                                if (accepted && volUserId != null) {
+                                  await FirebaseFirestore.instance
+                                      .collection("bloodDonations")
+                                      .doc(donDoc.id)
+                                      .update({
+                                        "confirmedVolunteers":
+                                            FieldValue.arrayUnion([volUserId]),
+                                      });
+                                }
+                              },
+                      );
+                    }).toList(),
+                  );
+                },
               );
             },
           ),
@@ -191,14 +359,10 @@ class StreamSection extends StatelessWidget {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Text(emptyText);
         }
-
-        final docs = snapshot.data!.docs;
-
-        // Keep only documents with data
-        final validDocs = docs.where((d) => d.data().isNotEmpty).toList();
-
+        final validDocs = snapshot.data!.docs
+            .where((d) => d.data().isNotEmpty)
+            .toList();
         if (validDocs.isEmpty) return Text(emptyText);
-
         return Column(children: validDocs.map(itemBuilder).toList());
       },
     );
