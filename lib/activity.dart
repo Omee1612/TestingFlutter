@@ -6,147 +6,206 @@ import 'package:intl/intl.dart';
 class ActivityScreen extends StatelessWidget {
   const ActivityScreen({super.key});
 
-  // Helper to return item
-  Future<void> returnItem(String docId) async {
-    await FirebaseFirestore.instance
-        .collection("borrowedItems")
-        .doc(docId)
-        .delete();
-  }
-
-  // Helper to cancel job
-  Future<void> cancelJob(String docId) async {
-    await FirebaseFirestore.instance
-        .collection("jobsTaken")
-        .doc(docId)
-        .delete();
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final formatter = DateFormat('dd MMM yyyy');
 
     if (user == null) {
       return const Center(child: Text("Please log in to see your activities."));
     }
 
-    final DateFormat formatter = DateFormat('dd MMM yyyy');
-
     return Scaffold(
       backgroundColor: const Color(0xFFF2F3F7),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ---------------- Borrowed Items ----------------
-              const SectionTitle(
-                title: "Borrowed Items",
-                icon: Icons.shopping_bag,
-              ),
-              const SizedBox(height: 8),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("borrowedItems")
-                    .where("userId", isEqualTo: user.uid)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const SizedBox.shrink();
-                  final items = snapshot.data!.docs;
-                  if (items.isEmpty) return const Text("No borrowed items.");
-
-                  return Column(
-                    children: items.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return ActivityCard(
-                        title: data['itemName'] ?? "Unnamed item",
-                        subtitle:
-                            "Borrowed on: ${data['timestamp'] != null ? formatter.format((data['timestamp'] as Timestamp).toDate()) : ""}",
-                        icon: Icons.shopping_bag,
-                        color: Colors.orangeAccent,
-                        actionText: "Return",
-                        onActionPressed: () => returnItem(doc.id),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // ---------------- Jobs Taken ----------------
-              const SectionTitle(title: "Jobs Taken", icon: Icons.work),
-              const SizedBox(height: 8),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("jobsTaken")
-                    .where("userId", isEqualTo: user.uid)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const SizedBox.shrink();
-                  final jobs = snapshot.data!.docs;
-                  if (jobs.isEmpty) return const Text("No jobs taken.");
-
-                  return Column(
-                    children: jobs.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return ActivityCard(
-                        title: data['jobTitle'] ?? "Unnamed job",
-                        subtitle:
-                            "Taken on: ${data['timestamp'] != null ? formatter.format((data['timestamp'] as Timestamp).toDate()) : ""}",
-                        icon: Icons.work,
-                        color: Colors.blueAccent,
-                        actionText: "Cancel",
-                        onActionPressed: () => cancelJob(doc.id),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // ---------------- Blood Donations ----------------
-              const SectionTitle(
-                title: "Blood Donations",
-                icon: Icons.bloodtype,
-              ),
-              const SizedBox(height: 8),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection("bloodDonations")
-                    .where("userId", isEqualTo: user.uid)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const SizedBox.shrink();
-                  final donations = snapshot.data!.docs;
-                  if (donations.isEmpty)
-                    return const Text("No blood donations.");
-
-                  return Column(
-                    children: donations.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return ActivityCard(
-                        title: "Donation",
-                        subtitle:
-                            "Date: ${data['timestamp'] != null ? formatter.format((data['timestamp'] as Timestamp).toDate()) : ""}\nLocation: ${data['location'] ?? "N/A"}",
-                        icon: Icons.bloodtype,
-                        color: Colors.redAccent,
-                        actionText: "",
-                        onActionPressed: null,
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-            ],
-          ),
+      appBar: AppBar(
+        title: const Text(
+          "Activity",
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        centerTitle: true,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // ---------------- Borrow Requests ----------------
+          const SectionTitle(
+            title: "Borrow Requests",
+            icon: Icons.notifications,
+          ),
+          const SizedBox(height: 8),
+          StreamSection(
+            query: FirebaseFirestore.instance
+                .collection("quickBorrowRequests")
+                .where("itemOwnerId", isEqualTo: user.uid),
+            emptyText: "No incoming requests.",
+            itemBuilder: (doc) {
+              final data = doc.data();
+              return ActivityCard(
+                title: data?['itemName'] ?? "Unnamed item",
+                subtitle:
+                    "Requested by: ${data?['requesterName'] ?? 'Unknown'}\nStatus: ${data?['status'] ?? 'PENDING'}",
+                icon: Icons.shopping_cart,
+                color: Colors.orangeAccent,
+                onDualAction: (accepted) async {
+                  if (accepted) {
+                    await FirebaseFirestore.instance
+                        .collection("borrowedItems")
+                        .add({
+                          "itemName": data?['itemName'] ?? '',
+                          "userId": data?['requesterId'] ?? '',
+                          "ownerId": user.uid,
+                          "timestamp": FieldValue.serverTimestamp(),
+                        });
+                  }
+                  await FirebaseFirestore.instance
+                      .collection("quickBorrowRequests")
+                      .doc(doc.id)
+                      .delete();
+                },
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+          const SectionTitle(title: "Borrowed Items", icon: Icons.shopping_bag),
+          const SizedBox(height: 8),
+          StreamSection(
+            query: FirebaseFirestore.instance
+                .collection("borrowedItems")
+                .where("userId", isEqualTo: user.uid),
+            emptyText: "No borrowed items.",
+            itemBuilder: (doc) {
+              final data = doc.data();
+              final timestamp = data?['timestamp'] as Timestamp?;
+              return ActivityCard(
+                title: data?['itemName'] ?? "Unnamed item",
+                subtitle: timestamp != null
+                    ? "Borrowed on: ${formatter.format(timestamp.toDate())}"
+                    : "Borrowed on: N/A",
+                icon: Icons.shopping_bag,
+                color: Colors.orange,
+                actionText: "Return",
+                onActionPressed: () => FirebaseFirestore.instance
+                    .collection("borrowedItems")
+                    .doc(doc.id)
+                    .delete(),
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+          const SectionTitle(title: "Jobs Taken", icon: Icons.work),
+          const SizedBox(height: 8),
+          StreamSection(
+            query: FirebaseFirestore.instance
+                .collection("jobsTaken")
+                .where("userId", isEqualTo: user.uid),
+            emptyText: "No jobs taken.",
+            itemBuilder: (doc) {
+              final data = doc.data();
+              final timestamp = data?['timestamp'] as Timestamp?;
+              return ActivityCard(
+                title: data?['jobTitle'] ?? "Unnamed job",
+                subtitle: timestamp != null
+                    ? "Taken on: ${formatter.format(timestamp.toDate())}"
+                    : "Taken on: N/A",
+                icon: Icons.work,
+                color: Colors.blueAccent,
+                actionText: "Cancel",
+                onActionPressed: () => FirebaseFirestore.instance
+                    .collection("jobsTaken")
+                    .doc(doc.id)
+                    .delete(),
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+          const SectionTitle(title: "Jobs Posted", icon: Icons.post_add),
+          const SizedBox(height: 8),
+          StreamSection(
+            query: FirebaseFirestore.instance
+                .collection("oddjobs")
+                .where("userId", isEqualTo: user.uid),
+            emptyText: "No jobs posted.",
+            itemBuilder: (doc) {
+              final data = doc.data();
+              final timestamp = data?['createdAt'] as Timestamp?;
+              return ActivityCard(
+                title: data?['title'] ?? "Unnamed job",
+                subtitle: timestamp != null
+                    ? "Posted on: ${formatter.format(timestamp.toDate())}"
+                    : "Posted on: N/A",
+                icon: Icons.work,
+                color: Colors.purpleAccent,
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+          const SectionTitle(title: "Notifications", icon: Icons.notifications),
+          const SizedBox(height: 8),
+          StreamSection(
+            query: FirebaseFirestore.instance
+                .collection("donationNotifications")
+                .where("userId", isEqualTo: user.uid),
+            emptyText: "No notifications.",
+            itemBuilder: (doc) {
+              final data = doc.data();
+              final timestamp = data?['timestamp'] as Timestamp?;
+              return ActivityCard(
+                title: "Notification",
+                subtitle:
+                    "${data?['message'] ?? ''}\n${timestamp != null ? formatter.format(timestamp.toDate()) : 'N/A'}",
+                icon: Icons.notifications,
+                color: Colors.teal,
+              );
+            },
+          ),
+
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }
 }
 
-/// ---------------- Section Title Widget ----------------
+// ---------------- Stream Section ----------------
+class StreamSection extends StatelessWidget {
+  final Query<Map<String, dynamic>> query;
+  final Widget Function(DocumentSnapshot<Map<String, dynamic>>) itemBuilder;
+  final String emptyText;
+
+  const StreamSection({
+    super.key,
+    required this.query,
+    required this.itemBuilder,
+    this.emptyText = "No items.",
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: query.snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Text(emptyText);
+        }
+
+        final docs = snapshot.data!.docs;
+
+        // Keep only documents with data
+        final validDocs = docs.where((d) => d.data().isNotEmpty).toList();
+
+        if (validDocs.isEmpty) return Text(emptyText);
+
+        return Column(children: validDocs.map(itemBuilder).toList());
+      },
+    );
+  }
+}
+
+// ---------------- Section Title ----------------
 class SectionTitle extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -171,7 +230,7 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-/// ---------------- Activity Card Widget ----------------
+// ---------------- Activity Card ----------------
 class ActivityCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -179,6 +238,7 @@ class ActivityCard extends StatelessWidget {
   final Color color;
   final String actionText;
   final VoidCallback? onActionPressed;
+  final Function(bool accepted)? onDualAction;
 
   const ActivityCard({
     super.key,
@@ -188,6 +248,7 @@ class ActivityCard extends StatelessWidget {
     required this.color,
     this.actionText = "",
     this.onActionPressed,
+    this.onDualAction,
   });
 
   @override
@@ -210,18 +271,45 @@ class ActivityCard extends StatelessWidget {
           ),
         ),
         subtitle: Text(subtitle),
-        trailing: actionText.isNotEmpty
-            ? ElevatedButton(
-                onPressed: onActionPressed,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: color,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+        trailing: onDualAction != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => onDualAction!(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text("ACCEPT"),
                   ),
-                ),
-                child: Text(actionText),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () => onDualAction!(false),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text("DENY"),
+                  ),
+                ],
               )
-            : null,
+            : (actionText.isNotEmpty
+                  ? ElevatedButton(
+                      onPressed: onActionPressed,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: color,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(actionText),
+                    )
+                  : null),
       ),
     );
   }

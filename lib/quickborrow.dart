@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class QuickBorrowScreen extends StatefulWidget {
   const QuickBorrowScreen({super.key});
@@ -13,10 +14,23 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
     'quick_borrow_items',
   );
 
+  final CollectionReference requestsRef = FirebaseFirestore.instance.collection(
+    'quickBorrowRequests',
+  );
+
   void _addNewItem() {
     final _titleController = TextEditingController();
     final _imageController = TextEditingController();
     final _durationController = TextEditingController();
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("You must be logged in to add items")),
+      );
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -56,7 +70,7 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () {
+                onPressed: () async {
                   if (_titleController.text.isEmpty ||
                       _durationController.text.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -65,14 +79,16 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
                     return;
                   }
 
-                  // Add new item to Firestore
-                  itemsRef.add({
+                  await itemsRef.add({
                     'title': _titleController.text,
                     'image': _imageController.text.isEmpty
                         ? 'https://via.placeholder.com/150'
                         : _imageController.text,
                     'duration': _durationController.text,
                     'description': 'User added item',
+                    'ownerId': user.uid,
+                    'ownerName': user.displayName ?? "Anonymous",
+                    'timestamp': FieldValue.serverTimestamp(),
                   });
 
                   Navigator.pop(context);
@@ -87,10 +103,12 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
     );
   }
 
-  void _openDetails(Map<String, dynamic> item) {
+  void _openDetails(Map<String, dynamic> item, String docId) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => QuickBorrowDetailScreen(item: item)),
+      MaterialPageRoute(
+        builder: (_) => QuickBorrowDetailScreen(item: item, docId: docId),
+      ),
     );
   }
 
@@ -105,7 +123,7 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
         centerTitle: true,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: itemsRef.snapshots(),
+        stream: itemsRef.orderBy('timestamp', descending: true).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -114,15 +132,15 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
             return const Center(child: Text("No items available."));
           }
 
-          final items = snapshot.data!.docs
-              .map((doc) => doc.data() as Map<String, dynamic>)
-              .toList();
+          final items = snapshot.data!.docs;
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: items.length,
             itemBuilder: (context, index) {
-              final item = items[index];
+              final item = items[index].data() as Map<String, dynamic>;
+              final docId = items[index].id;
+
               return Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -131,7 +149,7 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => _openDetails(item),
+                  onTap: () => _openDetails(item, docId),
                   child: Row(
                     children: [
                       ClipRRect(
@@ -168,6 +186,14 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
                                   fontSize: 14,
                                 ),
                               ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Owner: ${item['ownerName']}",
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -188,7 +214,7 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addNewItem,
-        label: const Text("Request Item"),
+        label: const Text("Add Item"),
         icon: const Icon(Icons.add),
       ),
     );
@@ -199,10 +225,17 @@ class _QuickBorrowScreenState extends State<QuickBorrowScreen> {
 
 class QuickBorrowDetailScreen extends StatelessWidget {
   final Map<String, dynamic> item;
-  const QuickBorrowDetailScreen({super.key, required this.item});
+  final String docId;
+  const QuickBorrowDetailScreen({
+    super.key,
+    required this.item,
+    required this.docId,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(title: Text(item["title"])),
       body: Column(
@@ -228,26 +261,48 @@ class QuickBorrowDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(item["description"] ?? "No description available."),
+                const SizedBox(height: 16),
+                Text(
+                  "Owner: ${item['ownerName']}",
+                  style: const TextStyle(color: Colors.grey),
+                ),
               ],
             ),
           ),
           const Spacer(),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("You borrowed ${item['title']}!")),
-                );
-                Navigator.pop(context);
-              },
-              icon: const Icon(Icons.shopping_cart),
-              label: const Text("BORROW"),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
+          if (user != null && user.uid != item['ownerId'])
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  // Create borrow request
+                  await FirebaseFirestore.instance
+                      .collection('quickBorrowRequests')
+                      .add({
+                        'itemId': docId,
+                        'itemName': item['title'],
+                        'itemOwnerId': item['ownerId'],
+                        'ownerName': item['ownerName'],
+                        'requesterId': user.uid,
+                        'requesterName': user.displayName ?? "Anonymous",
+                        'status': "PENDING",
+                        'timestamp': FieldValue.serverTimestamp(),
+                      });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Request sent for ${item['title']}!"),
+                    ),
+                  );
+                  Navigator.pop(context);
+                },
+                icon: const Icon(Icons.shopping_cart),
+                label: const Text("BORROW"),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

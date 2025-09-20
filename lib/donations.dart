@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DonationsScreen extends StatefulWidget {
   const DonationsScreen({super.key});
@@ -8,25 +10,6 @@ class DonationsScreen extends StatefulWidget {
 }
 
 class _DonationsScreenState extends State<DonationsScreen> {
-  List<Map<String, dynamic>> donationRequests = [
-    {
-      "name": "Asif Limon",
-      "bloodGroup": "O+",
-      "location": "Dhaka Medical",
-      "contact": "01711111111",
-      "urgency": "High",
-      "notes": "Accident patient needs 2 bags ASAP",
-    },
-    {
-      "name": "Tanjim Hasan",
-      "bloodGroup": "A-",
-      "location": "Chittagong Apollo",
-      "contact": "01822222222",
-      "urgency": "Medium",
-      "notes": "Operation scheduled for tomorrow",
-    },
-  ];
-
   String selectedBloodGroup = "All";
 
   void _showAddDonationDialog() {
@@ -36,6 +19,9 @@ class _DonationsScreenState extends State<DonationsScreen> {
     final contactController = TextEditingController();
     final notesController = TextEditingController();
     String urgency = "High";
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
     showModalBottomSheet(
       context: context,
@@ -77,8 +63,6 @@ class _DonationsScreenState extends State<DonationsScreen> {
                 const SizedBox(height: 12),
                 _buildTextField(notesController, "Notes / Details"),
                 const SizedBox(height: 12),
-
-                // Urgency Dropdown
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -103,7 +87,6 @@ class _DonationsScreenState extends State<DonationsScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 20),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -112,22 +95,24 @@ class _DonationsScreenState extends State<DonationsScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
                     ),
-                    elevation: 2,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     if (nameController.text.isNotEmpty &&
                         bloodGroupController.text.isNotEmpty &&
                         locationController.text.isNotEmpty) {
-                      setState(() {
-                        donationRequests.add({
-                          "name": nameController.text,
-                          "bloodGroup": bloodGroupController.text.toUpperCase(),
-                          "location": locationController.text,
-                          "contact": contactController.text,
-                          "urgency": urgency,
-                          "notes": notesController.text,
-                        });
-                      });
+                      await FirebaseFirestore.instance
+                          .collection("bloodDonations")
+                          .add({
+                            "patientName": nameController.text,
+                            "bloodGroup": bloodGroupController.text
+                                .toUpperCase(),
+                            "location": locationController.text,
+                            "contact": contactController.text,
+                            "urgency": urgency,
+                            "notes": notesController.text,
+                            "timestamp": FieldValue.serverTimestamp(),
+                            "createdBy": user.uid,
+                          });
                       Navigator.pop(context);
                     }
                   },
@@ -166,16 +151,9 @@ class _DonationsScreenState extends State<DonationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    List<Map<String, dynamic>> filteredRequests = selectedBloodGroup == "All"
-        ? donationRequests
-        : donationRequests
-              .where((req) => req["bloodGroup"] == selectedBloodGroup)
-              .toList();
-
-    filteredRequests.sort((a, b) {
-      const urgencyOrder = {"High": 0, "Medium": 1, "Low": 2};
-      return urgencyOrder[a["urgency"]]!.compareTo(urgencyOrder[b["urgency"]]!);
-    });
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null)
+      return const Center(child: Text("Please log in to see donations."));
 
     return Scaffold(
       body: Container(
@@ -238,133 +216,189 @@ class _DonationsScreenState extends State<DonationsScreen> {
                 ),
               ),
               Expanded(
-                child: filteredRequests.isEmpty
-                    ? const Center(
-                        child: Text(
-                          "No donation requests found",
-                          style: TextStyle(color: Colors.black54, fontSize: 16),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: filteredRequests.length,
-                        itemBuilder: (context, index) {
-                          final req = filteredRequests[index];
-                          return Container(
-                            margin: const EdgeInsets.symmetric(vertical: 10),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.95),
-                              borderRadius: BorderRadius.circular(18),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 26,
-                                      backgroundColor: const Color(0xFF87CEFA),
-                                      child: Text(
-                                        req["bloodGroup"],
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        "${req["name"]} • ${req["location"]}",
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 16,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  "Urgency: ${req["urgency"]}",
-                                  style: TextStyle(
-                                    color: req["urgency"] == "High"
-                                        ? Colors.red.shade700
-                                        : (req["urgency"] == "Medium"
-                                              ? Colors.orange.shade700
-                                              : Colors.green.shade700),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                if (req["notes"] != null &&
-                                    req["notes"].isNotEmpty)
-                                  Text(
-                                    req["notes"],
-                                    style: const TextStyle(
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "📞 ${req["contact"]}",
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection("bloodDonations")
+                      .orderBy("timestamp", descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData)
+                      return const Center(child: CircularProgressIndicator());
+                    var donations = snapshot.data!.docs;
+                    if (selectedBloodGroup != "All") {
+                      donations = donations.where((d) {
+                        final data = d.data() as Map<String, dynamic>;
+                        return data['bloodGroup'] == selectedBloodGroup;
+                      }).toList();
+                    }
+                    if (donations.isEmpty)
+                      return const Center(
+                        child: Text("No donation requests found"),
+                      );
+
+                    donations.sort((a, b) {
+                      const urgencyOrder = {"High": 0, "Medium": 1, "Low": 2};
+                      final da = a.data() as Map<String, dynamic>;
+                      final db = b.data() as Map<String, dynamic>;
+                      return urgencyOrder[da['urgency']]!.compareTo(
+                        urgencyOrder[db['urgency']]!,
+                      );
+                    });
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: donations.length,
+                      itemBuilder: (context, index) {
+                        final doc = donations[index];
+                        final req = doc.data() as Map<String, dynamic>;
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.95),
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 26,
+                                    backgroundColor: const Color(0xFF87CEFA),
+                                    child: Text(
+                                      req['bloodGroup'],
                                       style: const TextStyle(
-                                        fontWeight: FontWeight.w500,
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      "${req['patientName']} • ${req['location']}",
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 16,
                                         color: Colors.black87,
                                       ),
                                     ),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.black87,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 18,
-                                          vertical: 10,
-                                        ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                "Urgency: ${req['urgency']}",
+                                style: TextStyle(
+                                  color: req['urgency'] == "High"
+                                      ? Colors.red.shade700
+                                      : (req['urgency'] == "Medium"
+                                            ? Colors.orange.shade700
+                                            : Colors.green.shade700),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (req['notes'] != null &&
+                                  req['notes'].isNotEmpty)
+                                Text(
+                                  req['notes'],
+                                  style: const TextStyle(color: Colors.black87),
+                                ),
+                              const SizedBox(height: 10),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "📞 ${req['contact']}",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.black87,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      onPressed: () {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            backgroundColor: Colors.green,
-                                            content: Text(
-                                              "You volunteered to donate for ${req["name"]}!",
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                      child: const Text(
-                                        "Donate",
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 18,
+                                        vertical: 10,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                                    onPressed: () async {
+                                      // 1️⃣ Record volunteer
+                                      await FirebaseFirestore.instance
+                                          .collection("volunteers")
+                                          .add({
+                                            "donationId": doc.id,
+                                            "userId": user.uid,
+                                            "timestamp":
+                                                FieldValue.serverTimestamp(),
+                                          });
+
+                                      // 2️⃣ Notify the volunteer themselves (optional)
+                                      await FirebaseFirestore.instance
+                                          .collection("donationNotifications")
+                                          .add({
+                                            "userId": user.uid,
+                                            "message":
+                                                "You volunteered for ${req['patientName']}!",
+                                            "timestamp":
+                                                FieldValue.serverTimestamp(),
+                                          });
+
+                                      // 3️⃣ Notify the poster
+                                      await FirebaseFirestore.instance
+                                          .collection('userNotifications')
+                                          .doc(req['createdBy']) // poster's UID
+                                          .collection('notifications')
+                                          .add({
+                                            "message":
+                                                "${user.displayName ?? "Someone"} volunteered for your blood donation request: ${req['patientName']}",
+                                            "timestamp":
+                                                FieldValue.serverTimestamp(),
+                                            "seen": false,
+                                          });
+
+                                      // 4️⃣ Show confirmation
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "You volunteered for ${req['patientName']}!",
+                                          ),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    },
+                                    child: const Text(
+                                      "Donate",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ],
           ),

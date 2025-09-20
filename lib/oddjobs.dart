@@ -67,7 +67,7 @@ class _OddJobScreenState extends State<OddJobScreen> {
               ),
               TextField(
                 controller: _payController,
-                decoration: const InputDecoration(labelText: "Pay (in \BDT)"),
+                decoration: const InputDecoration(labelText: "Pay (in BDT)"),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 16),
@@ -118,7 +118,51 @@ class _OddJobScreenState extends State<OddJobScreen> {
     );
   }
 
-  void _takeJob(Map<String, dynamic> job) {
+  Future<void> _takeJob(Map<String, dynamic> job) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final jobsTakenRef = FirebaseFirestore.instance.collection('jobsTaken');
+
+    // 1️⃣ Check if the user already took this job
+    final query = await jobsTakenRef
+        .where('userId', isEqualTo: user.uid)
+        .where('jobTitle', isEqualTo: job['title'])
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("You have already taken this job!")),
+      );
+      return;
+    }
+
+    // 2️⃣ Add to jobsTaken if not already taken
+    final jobTaken = {
+      "jobTitle": job['title'],
+      "jobDescription": job['description'],
+      "pay": job['pay'],
+      "userId": user.uid,
+      "username": user.displayName ?? "Anonymous",
+      "timestamp": FieldValue.serverTimestamp(),
+      "posterId": job['userId'], // for notification
+      "posterName": job['username'],
+    };
+
+    await jobsTakenRef.add(jobTaken);
+
+    // 3️⃣ Optional: Send notification to poster
+    await FirebaseFirestore.instance
+        .collection('userNotifications')
+        .doc(job['userId'])
+        .collection('notifications')
+        .add({
+          "message":
+              "${user.displayName ?? "Someone"} accepted your job: ${job['title']}",
+          "timestamp": FieldValue.serverTimestamp(),
+          "seen": false,
+        });
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("You accepted the job: ${job['title']}")),
     );

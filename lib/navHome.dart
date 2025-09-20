@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 // TODO: add flutter_svg to pubspec.yaml
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:lagbe_lagbe/NotificationsScreen.dart';
 import 'package:lagbe_lagbe/donations.dart';
 import 'package:lagbe_lagbe/finder.dart';
 import 'package:lagbe_lagbe/oddjobs.dart';
@@ -52,7 +53,16 @@ class HomeHeader extends StatelessWidget {
             press: () {},
           ),
           const SizedBox(width: 8),
-          IconBtnWithCounter(svgSrc: bellIcon, numOfitem: 3, press: () {}),
+          IconBtnWithCounter(
+            svgSrc: bellIcon,
+            numOfitem: 3, // total pending notifications
+            press: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              );
+            },
+          ),
         ],
       ),
     );
